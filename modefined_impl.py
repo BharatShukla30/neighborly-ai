@@ -23,7 +23,7 @@ def analyze_text(text, api_key):
     }
     data = {
         'comment': {'text': text},
-        'languages': ['en'],
+        'languages': ['en','hi','hi-Latn'],
         'requestedAttributes': {
             'TOXICITY': {},
             'IDENTITY_ATTACK': {},
