@@ -10,14 +10,14 @@ from datetime import datetime
 load_dotenv()
 MONGO_URI = os.getenv('MONGO_URI')
 PERSPECTIVE_API_KEY = os.getenv('PERSPECTIVE_API_KEY')
-
+PERSPECTIVE_API_URL = os.getenv('PERSPECTIVE_API_URL')
 
 client = MongoClient(MONGO_URI)
 db = client['neighborly-dev']
 messages_collection = db['messages']
 
 def analyze_text(text, api_key):
-    url = 'https://commentanalyzer.googleapis.com/v1alpha1/comments:analyze'
+    url = PERSPECTIVE_API_URL
     params = {
         'key': api_key
     }
