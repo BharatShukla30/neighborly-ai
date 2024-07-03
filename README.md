@@ -1,7 +1,6 @@
 # neighborly-ai
 AI application for neighborly
 ## Moderation: 
-For moderation, perspective api has been applied. The final_mongo_perspective.py is the file that has the correct code.You will need to make a new env in your system and add the required api and database url's to it. Download the final_mongo_perspective.py and keep the env in the same folder and then run the file.
-Requirements: python ,pymongo ,requests, python-dotenv
-<br>
-The final.py is the final file with the completed moderation code.
+For moderation, perspective api has been applied. <br>
+make a env in your system and add the required api(PERSPECTIVE_API_KEY, PERSPECTIVE_API_URL) and database url's(POSTGRES_URI,MONGO_URI) to it.
+The code is present in the moderation_mongo_postgres.py. Keep the enviroment file and the final code file in the same folder and run the file. The output will be saved in json form.
