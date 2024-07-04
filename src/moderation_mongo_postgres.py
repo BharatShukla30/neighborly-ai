@@ -11,7 +11,7 @@ from bson import ObjectId
 
 load_dotenv()
 
-POSTGRES_URI = os.getenv('POSTGRES_URI')
+POSTGRES_URI = os.getenv('POSTGRES_URI1')
 MONGO_URI = os.getenv('MONGO_URI')
 PERSPECTIVE_API_KEY = os.getenv('PERSPECTIVE_API_KEY')
 PERSPECTIVE_API_URL = os.getenv('PERSPECTIVE_API_URL')
@@ -19,8 +19,9 @@ PERSPECTIVE_API_URL = os.getenv('PERSPECTIVE_API_URL')
 mongo_client = MongoClient(MONGO_URI)
 mongo_db = mongo_client['neighborly-dev']
 messages_collection = mongo_db['messages']
+users_collection = mongo_db['users']
 
-
+# Function to analyze text using Perspective API
 def analyze_text(text, api_key):
     url = PERSPECTIVE_API_URL
     params = {'key': api_key}
@@ -45,23 +46,20 @@ def analyze_text(text, api_key):
 
 
 def calculate_severity(analysis_result):
-    max_score = 0
-    for attribute in analysis_result:
-        score = analysis_result[attribute].get('summaryScore', {}).get('value', 0)
-        if score > max_score:
-            max_score = score
-    
-    
-    if max_score <= 0.2:
-        return 1
-    elif max_score <= 0.4:
-        return 2
-    elif max_score <= 0.6:
-        return 3
-    elif max_score <= 0.8:
-        return 4
-    else:
+    max_score = max(
+        analysis_result.get(attr, {}).get('summaryScore', {}).get('value', 0)
+        for attr in thresholds
+    )
+    if max_score >= 0.9:
         return 5
+    elif max_score >= 0.7:
+        return 4
+    elif max_score >= 0.5:
+        return 3
+    elif max_score >= 0.3:
+        return 2
+    else:
+        return 1
 
 
 def flag_message(contentid, commentid, userid, reason, messageid, group_id, msg_type, severity):
@@ -90,7 +88,7 @@ batch_size = 50
 offset = 0
 flagged_messages = []
 
-
+# PostgreSQL
 pg_conn = psycopg2.connect(POSTGRES_URI)
 pg_cur = pg_conn.cursor(cursor_factory=DictCursor)
 
@@ -113,9 +111,9 @@ def process_postgres_table(table_name, columns, content_column, id_column, msg_t
                 group_id = None
                 content_flagged = False
 
-                # content
+                
                 analysis_result = analyze_text(content, PERSPECTIVE_API_KEY)
-                severity = calculate_severity(analysis_result)
+                severity = calculate_severity(analysis_result)  # Calculate severity
                 for attribute, threshold in thresholds.items():
                     score = analysis_result.get(attribute, {}).get('summaryScore', {}).get('value', 0)
                     if score > threshold:
@@ -126,7 +124,7 @@ def process_postgres_table(table_name, columns, content_column, id_column, msg_t
                 # username 
                 if not content_flagged and username:
                     username_analysis_result = analyze_text(username, PERSPECTIVE_API_KEY)
-                    severity = calculate_severity(username_analysis_result)
+                    severity = calculate_severity(username_analysis_result)  # Calculate severity
                     for attribute, threshold in thresholds.items():
                         score = username_analysis_result.get(attribute, {}).get('summaryScore', {}).get('value', 0)
                         if score > threshold:
@@ -136,10 +134,11 @@ def process_postgres_table(table_name, columns, content_column, id_column, msg_t
             offset += batch_size
         except psycopg2.OperationalError as e:
             print(f"Database connection error: {e}")
-            time.sleep(5)  
+            time.sleep(5)  # Wait before retrying
 
 
 process_postgres_table('comments', 'contentid, commentid, userid, text, username', 'text', 'commentid', 'comment')
+
 
 process_postgres_table('content', 'contentid, userid, body, username, type', 'body', 'contentid', 'content')
 
@@ -153,26 +152,30 @@ while True:
     for message in messages:
         messageid = message['_id']
         msg = message['msg']
-        userid = None  # Change to correct field name 
         senderName = message['senderName']
+        
+        user = users_collection.find_one({"senderName": senderName})
+        userid = user['_id'] if user else 0
+        
         group_id = message['group_id']
         contentid = None
         commentid = None
         msg_flagged = False
 
-        
+        # message
         analysis_result_msg = analyze_text(msg, PERSPECTIVE_API_KEY)
-        severity = calculate_severity(analysis_result_msg)
+        severity = calculate_severity(analysis_result_msg)  # Calculate severity
         for attribute, threshold in thresholds.items():
             score = analysis_result_msg.get(attribute, {}).get('summaryScore', {}).get('value', 0)
             if score > threshold:
                 flagged_messages.append(flag_message(contentid, commentid, userid, f'{attribute} in msg', messageid, group_id, 'msg', severity))
                 msg_flagged = True
                 break
-        #sendername
+
+        # sender name
         if not msg_flagged:
             analysis_result_sender = analyze_text(senderName, PERSPECTIVE_API_KEY)
-            severity = calculate_severity(analysis_result_sender)
+            severity = calculate_severity(analysis_result_sender)  # Calculate severity
             for attribute, threshold in thresholds.items():
                 score = analysis_result_sender.get(attribute, {}).get('summaryScore', {}).get('value', 0)
                 if score > threshold:
@@ -183,11 +186,35 @@ while True:
 
 
 pg_cur.close()
-pg_conn.close()
-
 
 output_file = 'final4_messages.json'
 with open(output_file, 'w') as outfile:
     json.dump(flagged_messages, outfile, indent=4)
 
 print(f"Flagged messages have been saved to '{output_file}'")
+
+
+pg_conn = psycopg2.connect(POSTGRES_URI)  
+pg_cur = pg_conn.cursor()
+
+for report in flagged_messages:
+    pg_cur.execute("""
+        INSERT INTO public.reports (contentid, commentid, userid, report_reason, createdat, processed, messageid, groupid, severity)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+    """, (
+        report['contentid'],
+        report['commentid'],
+        report['userid'],
+        report['report_reason'],
+        report['flagged_at'],
+        False,  # Default value
+        report['messageid'],
+        report['group_id'],
+        report['severity']
+    ))
+
+pg_conn.commit()
+pg_cur.close()
+pg_conn.close()
+
+print("Flagged messages have been inserted into the reports table.")
