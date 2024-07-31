@@ -24,3 +24,37 @@ THRESHOLDS = {
 }
 
 BATCH_SIZE = 50
+
+
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
+
+MONGO_URI = os.getenv("MONGO_URI")
+DATABASE_NAME = 'neighborly-dev'
+MESSAGES_COLLECTION = 'messages'
+GROUPS_COLLECTION = 'groups'
+
+AI21_API_KEY = os.getenv("AI21_API_KEY")
+
+OUTPUT_FILE = 'ice_breakers_final.json'
+
+GROUP_ID_FIELD = 'group_id'
+MESSAGE_FIELD = 'msg'
+GROUP_NAME_FIELD = 'name'
+
+
+PROMPT_TEMPLATE = """
+Analyze the following group chat messages:
+
+{messages}
+
+Based on these messages, generate {num_ice_breakers} fun and engaging ice breaker questions that would be suitable for this group. The ice breakers should be related to the general context of the messages and appeal to the interests shown in these messages. {language_instruction}
+
+Format the output as a numbered list.
+
+Ice Breakers:
+1."""
+
+
